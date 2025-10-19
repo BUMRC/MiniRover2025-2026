@@ -5,17 +5,18 @@
 This repository is dedicated to the Mini Rover development and testing platform.
 As the project progresses, we will use this README to:
 
-✅ Document our evolving goals and milestones
+MiniRover Team
+	To prepare for integrating everything we develop in the real world we want to be able to test it on a minirover while the main rover is still being designed/manufactured. The main tasks for the minirover team are as follows: 
+Write a PID controller using an esp32 and motors with an encoder(like the gobuilda motors we have in the lab) to be able to control the speed and direction of the motors. The esp32 should be able to communicate with a process running on the jetson, which will specify over serial or another communication protocol the target speed for the motors which the esp32s should be able to control. 
+Try to make PID parameters configurable from the Jetson rather than needing to change the code on the esp32s. 
+Small 3d printed rover that can mount either the big jetson or the small jetson, and supports some motors, either the gobuilda motors or other motors of your choice. 
 
-👤 List team members and responsibilities
+Implement teleop control through ROS for the minirover. I would work with the teleop in simulation team for this part.  
 
-🎯 Break down subproblems and task ownership
 
-🚀 Track target completion timelines
+✅ Document our goals 
 
-📌 Project Overview
-
-The Mini Rover serves as a scaled test platform to prototype features, validate system logic, and iterate quickly before applying solutions to the full competition rover.
+👤 Ozan (Ozzy) , Quinlan (Quinn) , William
 
 👥 Team & Roles
 Name	Role / Focus Area	Status
@@ -26,22 +27,13 @@ TBD	Example: Documentation & Repo Maintenance	Status
 This table will be updated as roles are confirmed.
 
 🎯 Goals & Milestones
-Goal	Description	Target Date	Status
-TBD	Example: Get basic motor control running	TBD	Not Started
-TBD	Example: Test feedback loop behavior	TBD	Not Started
-🧩 Subproblems & Task Breakdown
 
-We will gradually define and refine subproblems here as we work:
+PID Controller using an ep32 and motors with an econder.(Running on the Jetson)
 
-Example structure
+PID parameters configurable from the Jetson rather than needing to change the code on the esp32s. 
 
-Subsystem Name — Brief description
+Implement teleop control through ROS for the minirover
 
-Task 1 — Owner
-
-Task 2 — Owner
-
-Task 3 — Owner
 
 🗂 Repository Structure (To Be Defined)
 
@@ -51,4 +43,3 @@ As more modules are added, this section will document folder layout and conventi
 
 Updates will be logged here as the project evolves.
 
-Let me know if you want me to add placeholders for technical stack, branch workflow rules, or task formatting (like using checklists with Markdown).
