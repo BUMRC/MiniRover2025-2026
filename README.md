@@ -28,11 +28,20 @@ This table will be updated as roles are confirmed.
 
 🎯 Goals & Milestones
 
+
+LEARN HOW TO READ MOTOR SIGNAL.
+
+UNDERSTAND CODE ATTACHED TO OUT GITHUB AND LIBRARIES. FIGURE OUT THE RPM
+
 PID Controller using an ep32 and motors with an econder.(Running on the Jetson)
 
 PID parameters configurable from the Jetson rather than needing to change the code on the esp32s. 
 
 Implement teleop control through ROS for the minirover
+
+
+- Find Accurate code to reead motor signal.
+-                                                                                                                                                                                                                     
 
 
 🗂 Repository Structure (To Be Defined)
