@@ -66,10 +66,16 @@ double pid(double error, double dt){
 
   // The integral part sums up all the error and multiplies it by change in time. (Rough approx)
   integral += error * dt;
-  
   //derivative finds the slope of the errors (Rough approx)
   double derivative = (error - previous) / dt;
-  //low pass filter
+  //creates the variable derivativeLPF which is used as the refrence point in LPF calculation
+  //set equal to 0 only once. 
+  static double derivativeLPF = 0;
+  //weight is what effects how much the real derivative effects the value we pass to the PID. 0.1 is used because it offers a smooth but not too smooth value. 
+  double weight = 0.1; //this val can be tuned
+  //LPF is the preivous lpf times the difference in previous derivative and current derivative multiplied by a small amount. 
+  derivativeLPF = derivativeLPF + weight * (rawDerivative - derivativeLPF);
+  double derivative  = derivativeLPF
   previous = error;
   //Calculates new output
   double output = (Kp * proportional) + (Ki * integral) + (Kd * derivative);
