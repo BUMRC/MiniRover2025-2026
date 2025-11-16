@@ -65,6 +65,7 @@ double pid(double error, double dt){
   double proportional = error;
 
   // The integral part sums up all the error and multiplies it by change in time. (Rough approx)
+  // add clamping
   integral += error * dt;
   //derivative finds the slope of the errors (Rough approx)
   double derivative = (error - previous) / dt;
