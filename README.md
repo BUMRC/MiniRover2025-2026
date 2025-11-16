@@ -16,7 +16,7 @@ Implement teleop control through ROS for the minirover. I would work with the te
 
 ✅ Document our goals 
 
-👤 Ozan (Ozzy) , Quinlan (Quinn) , William
+👤 Ozan (Ozzy) , Quinlan (Quinn) , William, Jason
 
 👥 Team & Roles
 Name	Role / Focus Area	Status
