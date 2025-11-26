@@ -3,8 +3,8 @@
 
 #define CHANNEL_A 11
 #define CHANNEL_B 12
-#define IN1 6
-#define IN2 7
+#define IN1 47
+#define IN2 48
 #define PWM 5
 
 ESP32Encoder encoder;
@@ -53,7 +53,7 @@ void setup() {
   integral = 0;
   previous = 0;
   //RPM Calc Setup
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial.println("Encoder RPM - cleaned variable names");
 
   pinMode(CHANNEL_A, INPUT_PULLUP);
