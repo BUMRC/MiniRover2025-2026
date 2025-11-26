@@ -1,7 +1,7 @@
 #include <RPMCalc.h> 
 #include //wtv the jetson is telling
-#define IN1 6
-#define IN2 7
+#define IN1 47
+#define IN2 48
 #define PWM 5
 
 double dt, last_time;
