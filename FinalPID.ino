@@ -1,11 +1,11 @@
 #include <ESP32Encoder.h>
 #include <esp_timer.h>
 
-#define CHANNEL_A 11
-#define CHANNEL_B 12
-#define IN1 47
-#define IN2 48
-#define PWM 5
+#define CHANNEL_A 11 //yellow wire
+#define CHANNEL_B 12 //green wire
+#define IN1 47 //yellow wire
+#define IN2 48 //yellow wire
+#define PWM 5 //green wire
 
 ESP32Encoder encoder;
 
