@@ -25,6 +25,7 @@ volatile bool newReadingAvailable = false;
 //Previous reading (used to compute change)
 int64_t prevEncoderCount = 0;
 int64_t prevTimestampMicroseconds = 0;
+int64_t timePerRev_us
 
 int prevRPM = 0;
 float currentRPMWeight = 0.4;
@@ -100,28 +101,28 @@ void loop() {
 
  if (!newReadingAvailable) return;
   
-  float setpoint = 50; //this changes from jetson comm
+  //float setpoint = 50; //this changes from jetson comm
 
   //Calculates the error in the system
-  double actualRpm = cleanRPM / 10;// from our rpm calc
+  double actualRpm, double countChange = rpmCalculator();// from our rpm calc
   double error = setpoint - actualRpm;
   pidOutput = pid(error, dt);
 
-  // Scale / constrain PID output to 0–255 for PWM
+  //Scale / constrain PID output to 0–255 for PWM
   int pwr = constrain((int)fabs(pidOutput), 0, 255);
 
-  // Determine direction
+  //Determine direction
   int dir = 1;
   if(pidOutput < 0) dir = -1;  // Where voltage and direction get set
 
-  // Send to motor
+  //Send to motor
   setMotor(dir, pwr);
 
   //print out values for validation
   Serial.print("Setpoint: "); Serial.print(setpoint);
   Serial.print(", Actual: "); Serial.print(actualRpm);
   Serial.print(", Error: "); Serial.print(error);
-  Serial.print(" Encoder count"); Serial.printIn();
+  Serial.print(" Encoder count"); Serial.printIn(countChange);
 
 }
 
@@ -140,14 +141,15 @@ double rpmCalculator() {
 
   //Only calculate RPM when there's new data
   //Use 10 microsecond intervals to reduce overheads on the esp32
-  if (timeChangeMicroseconds > 10) {
+  if (timeChangeMicroseconds > 0) { //Zero-division guard
+    
     prevEncoderCount = currentEncoderCount;
     prevTimestampMicroseconds = currentTimestampMicroseconds;
   }
 
   //Integer RPM calculation:
-  //RPM = (countChange * 100,000) / (COUNTS_PER_REVOLUTION * timeChangeMicroseconds)
-  int64_t numerator = countChange * 100000LL;
+  //RPM = (countChange * 60,000,000) / (COUNTS_PER_REVOLUTION * timeChangeMicroseconds)
+  int64_t numerator = countChange * (60LL * 1000000LL);
   int64_t denominator = (int64_t)COUNTS_PER_REVOLUTION * timeChangeMicroseconds;
 
   bool isNegative = false;
@@ -156,28 +158,27 @@ double rpmCalculator() {
     numerator = -numerator;
   }
 
-  //Compute RPM 
-  int64_t currentRPM = (numerator * 10 + denominator / 2) / denominator;
-  
+  //convert to RPM
+  int64_t currentRPM = numerator/ denominator; //returns unfiltered RPM 
+
+  //Clean with low-pass ema filter
   cleanRPM = emaFilter(currentRPM, prevRPM, currentRPMWeight);
   
   if (isNegative) currentRPM = -currentRPM;
 
   Serial.print("RPM: ");
-  Serial.print(currentRPM / 10);
+  Serial.print(currentRPM);
   Serial.print('.');
   Serial.println(llabs(currentRPM % 10));
 
   //Store for next reading
-  prevEncoderCount = currentEncoderCount;
-  prevTimestampMicroseconds = currentTimestampMicroseconds;
-  prevRPM = currentRPM * 10;
+  prevRPM = currentRPM;
 
  //Timer keeping track of time elapsed.  
   double now = millis();
   dt = (now-last_time)/1000.00;
   last_time = now;
-  return cleanRPM, error
+  return actualRPM, countChange;
 }
 
 double pid(double error, double dt){
@@ -189,7 +190,7 @@ double pid(double error, double dt){
   integral += error * dt;
   
   //derivative finds the slope of the errors (Rough approx)
-  double derivative = (error - previous) / dt;
+  double derivative = dt > 0 ? (error - previous) / dt : 0; // defaults to 0 
   
   //low pass filter
   previous = error;
@@ -203,7 +204,7 @@ double emaFilter(double currentRPM, double prevRPM, float currentRPMWeight){
   //EMA Low pass filter for noise reduction
   //Exponential Moving Average: currentRPM_Weight = 0.4
   cleanRPM = ((currentRPM) * currentRPMWeight) + (prevRPM * (1 - currentRPMWeight));
-  return cleanRPM, 
+  return cleanRPM; 
 }
 
 //function that takes the direction, the pwrm, and the two motor pins and changes the speed of motor accordingly. 
