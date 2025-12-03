@@ -21,11 +21,11 @@ const uint64_t READ_INTERVAL_MICROSECONDS = 100000ULL;
 volatile int64_t latestEncoderCount = 0;
 volatile int64_t latestTimestampMicroseconds = 0;
 volatile bool newReadingAvailable = false;
+volatile int64_t countChange = 0; 
 
 //Previous reading (used to compute change)
 int64_t prevEncoderCount = 0;
 int64_t prevTimestampMicroseconds = 0;
-int64_t timePerRev_us
 
 int prevRPM = 0;
 float currentRPMWeight = 0.4;
@@ -104,7 +104,7 @@ void loop() {
   //float setpoint = 50; //this changes from jetson comm
 
   //Calculates the error in the system
-  double actualRpm, double countChange = rpmCalculator();// from our rpm calc
+  double actualRpm = rpmCalculator();// from our rpm calc
   double error = setpoint - actualRpm;
   pidOutput = pid(error, dt);
 
@@ -122,7 +122,7 @@ void loop() {
   Serial.print("Setpoint: "); Serial.print(setpoint);
   Serial.print(", Actual: "); Serial.print(actualRpm);
   Serial.print(", Error: "); Serial.print(error);
-  Serial.print(" Encoder count"); Serial.printIn(countChange);
+  Serial.print(" Encoder count"); Serial.println(countChange);
 
 }
 
@@ -136,7 +136,7 @@ double rpmCalculator() {
   interrupts();
 
   //Compute changes in encoder count and time
-  int64_t countChange = currentEncoderCount - prevEncoderCount;
+  countChange = currentEncoderCount - prevEncoderCount;
   int64_t timeChangeMicroseconds = currentTimestampMicroseconds - prevTimestampMicroseconds;
 
   //Only calculate RPM when there's new data
@@ -178,7 +178,8 @@ double rpmCalculator() {
   double now = millis();
   dt = (now-last_time)/1000.00;
   last_time = now;
-  return actualRPM, countChange;
+  
+  return actualRPM;
 }
 
 double pid(double error, double dt){
