@@ -1,13 +1,14 @@
 #include <ESP32Encoder.h>
+#include <esp32-hal-ledc.h>        //declares ledcSetup, ledcAttachPin on many cores
 #include <esp_timer.h>
 
-#define CHANNEL_A 11 //yellow wire
-#define CHANNEL_B 12 //green wire
+#define CHANNEL_A 15 //yellow wire
+#define CHANNEL_B 16 //green wire
 #define IN1 47 //yellow wire
-#define IN2 48 //yellow wire
-#define PWM 5 //green wire
+#define PWM 48 //green wire
+//#define PWM 5 //yellow wire
 
-ESP32Encoder encoder;
+ESP32Encoder encoder;   
 
 //Encoder specification
 const float ENCODER_PPR = 751.8f;
@@ -45,8 +46,13 @@ double integral, previous, pidOutput = 0;
 double Kp, Ki, Kd; //for now just following a setup tutorial, we can tune this later
 double setpoint = 50;
 
+
 void setup() {
   //PID set up stuff
+  Serial.begin(115200);
+  Serial.print("Setup");
+  Serial.println("Encoder RPM - cleaned variable names");
+
   Kp = 1;
   Ki = 0.1;
   Kd = 0.01;
@@ -55,11 +61,10 @@ void setup() {
   integral = 0;
   previous = 0;
   //RPM Calc Setup
-  Serial.begin(9600);
-  Serial.println("Encoder RPM - cleaned variable names");
+
 
   pinMode(CHANNEL_A, INPUT_PULLUP);
-  pinMode(CHANNEL_B, INPUT_PULLUP);
+  pinMode(CHANNEL_B, INPUT_PULLUP); //Attach
 
   encoder.attachFullQuad(CHANNEL_A, CHANNEL_B);
   encoder.clearCount();
@@ -80,7 +85,7 @@ void setup() {
 
   pinMode(PWM,OUTPUT);
   pinMode(IN1,OUTPUT);
-  pinMode(IN2,OUTPUT);
+  //pinMode(IN2,OUTPUT);
  
   // setpoint = 50;
   // for(int i = 0; i < 50; i++)
@@ -91,15 +96,14 @@ void setup() {
   // }
   
   //Set up LED control, the way esps can write to the motor.
-  ledcSetup(0, 20000, 8);
-  ledcAttachPin(PWM, 0); // 0 is placeholder for what pin we attach the 
+  ledcAttach(PWM, 20000, 8); //Attach PWM pin, 20kHz frequency, 8-bit resolution 
    // 20 kHz, 8-bit resolution
 
 }
 
 void loop() {
 
- if (!newReadingAvailable) return;
+ //if (!newReadingAvailable) return;
   
   //float setpoint = 50; //this changes from jetson comm
 
@@ -129,11 +133,11 @@ void loop() {
 double rpmCalculator() {
   //Pause the rest of the code to refresh start and end encodercount and seconds
   //The periodic timer runs asynchronously on the esp32, which can cause interrupts
-  noInterrupts();
+
   int64_t currentEncoderCount = latestEncoderCount;
   int64_t currentTimestampMicroseconds = latestTimestampMicroseconds;
   newReadingAvailable = false;
-  interrupts();
+
 
   //Compute changes in encoder count and time
   countChange = currentEncoderCount - prevEncoderCount;
@@ -172,14 +176,14 @@ double rpmCalculator() {
   Serial.println(llabs(currentRPM % 10));
 
   //Store for next reading
-  prevRPM = currentRPM;
+  prevRPM = cleanRPM;
 
  //Timer keeping track of time elapsed.  
   double now = millis();
   dt = (now-last_time)/1000.00;
   last_time = now;
   
-  return actualRPM;
+  return cleanRPM;
 }
 
 double pid(double error, double dt){
@@ -210,17 +214,17 @@ double emaFilter(double currentRPM, double prevRPM, float currentRPMWeight){
 
 //function that takes the direction, the pwrm, and the two motor pins and changes the speed of motor accordingly. 
 void setMotor(int dir, int pwmVal){
-  ledcWrite(0, pwmVal);  // channel 0
+  ledcWrite(PWM, pwmVal);  // PWM pin
   if(dir == 1){
     digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
+  //  digitalWrite(IN2, LOW);
   } 
   else if(dir == -1){
     digitalWrite(IN1, LOW);
-    digitalWrite(IN2, HIGH);
+  //  digitalWrite(IN2, HIGH);
   } 
   else {
     digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
+  //  digitalWrite(IN2, LOW);
   }
 }
