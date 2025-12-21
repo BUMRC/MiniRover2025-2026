@@ -16,7 +16,7 @@ const int QUADRATURE_MULTIPLIER = 4; //We're cointing 4 edges/signals per click 
 const long COUNTS_PER_REVOLUTION = (long)(ENCODER_PPR * QUADRATURE_MULTIPLIER);
 
 //How often we read the encoder (100 ms)
-const uint64_t READ_INTERVAL_MICROSECONDS = 100000ULL;
+const uint64_t READ_INTERVAL_MICROSECONDS = 100;
 
 //These values change spontaneously
 volatile int64_t latestEncoderCount = 0;
@@ -73,7 +73,7 @@ void setup() {
   prevTimestampMicroseconds = esp_timer_get_time();
   prevEncoderCount = encoder.getCount();
 
-  //Create periodic timer that will run on the esp32, using the callback from timerCallback
+  //Create periodic timer argument that will run on the esp32, using the callback from timerCallback
   const esp_timer_create_args_t timerArgs = {
     .callback = &timerCallback,
     .name = "encoder_reader"
@@ -81,6 +81,8 @@ void setup() {
 
   esp_timer_handle_t periodicTimer;
   esp_timer_create(&timerArgs, &periodicTimer);
+
+  //Start periodic timer
   esp_timer_start_periodic(periodicTimer, READ_INTERVAL_MICROSECONDS);
 
   pinMode(PWM,OUTPUT);
@@ -103,7 +105,7 @@ void setup() {
 
 void loop() {
 
- //if (!newReadingAvailable) return;
+  if (!newReadingAvailable) return;
   
   //float setpoint = 50; //this changes from jetson comm
 
@@ -113,6 +115,8 @@ void loop() {
   pidOutput = pid(error, dt);
 
   //Scale / constrain PID output to 0–255 for PWM
+  //use `fabs` for absolute value
+  //NOTE: Direction is noted by `dir` so this doesn't affect signal accuracy
   int pwr = constrain((int)fabs(pidOutput), 0, 255);
 
   //Determine direction
@@ -131,8 +135,6 @@ void loop() {
 }
 
 double rpmCalculator() {
-  //Pause the rest of the code to refresh start and end encodercount and seconds
-  //The periodic timer runs asynchronously on the esp32, which can cause interrupts
 
   int64_t currentEncoderCount = latestEncoderCount;
   int64_t currentTimestampMicroseconds = latestTimestampMicroseconds;
@@ -195,9 +197,10 @@ double pid(double error, double dt){
   integral += error * dt;
   
   //derivative finds the slope of the errors (Rough approx)
+  //Guard against zero-division runtime error
   double derivative = dt > 0 ? (error - previous) / dt : 0; // defaults to 0 
   
-  //low pass filter
+  //Reset variable for next iteration
   previous = error;
   
   //Calculates new output
@@ -207,7 +210,7 @@ double pid(double error, double dt){
 
 double emaFilter(double currentRPM, double prevRPM, float currentRPMWeight){
   //EMA Low pass filter for noise reduction
-  //Exponential Moving Average: currentRPM_Weight = 0.4
+  //Exponential Moving Average: currentRPMWeight = 0.4
   cleanRPM = ((currentRPM) * currentRPMWeight) + (prevRPM * (1 - currentRPMWeight));
   return cleanRPM; 
 }
@@ -217,14 +220,15 @@ void setMotor(int dir, int pwmVal){
   ledcWrite(PWM, pwmVal);  // PWM pin
   if(dir == 1){
     digitalWrite(IN1, HIGH);
-  //  digitalWrite(IN2, LOW);
   } 
   else if(dir == -1){
+    //if opposite direction, revese signal 
     digitalWrite(IN1, LOW);
-  //  digitalWrite(IN2, HIGH);
   } 
   else {
+    //defaults to off-state
+    //Use in troubleshooting:
+    //- if off-state regardless of setpoint, test pid function and rpm calculator
     digitalWrite(IN1, LOW);
-  //  digitalWrite(IN2, LOW);
   }
 }
