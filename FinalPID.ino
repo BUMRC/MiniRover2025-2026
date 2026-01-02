@@ -1,6 +1,6 @@
 #include <ESP32Encoder.h>
-#include <esp32-hal-ledc.h>        //declares ledcSetup, ledcAttachPin on many cores
 #include <esp_timer.h>
+#include <esp_attr.h> //for IRAM_ATTR
 
 #define CHANNEL_A 15 //yellow wire
 #define CHANNEL_B 16 //green wire
@@ -8,44 +8,46 @@
 #define PWM 48 //green wire
 //#define PWM 5 //yellow wire
 
+//Declare encoder
 ESP32Encoder encoder;   
 
 //Encoder specification
-const float ENCODER_PPR = 751.8f;
-const int QUADRATURE_MULTIPLIER = 4; //We're cointing 4 edges/signals per click on the encoder(higher-res)
+const float ENCODER_PPR = 187.95f; //Number of signal high's per revolution
+const int QUADRATURE_MULTIPLIER = 4; //We're cointing 4 edges/signals per click on the encoder for high resolution
 const long COUNTS_PER_REVOLUTION = (long)(ENCODER_PPR * QUADRATURE_MULTIPLIER);
 
-//How often we read the encoder (100 ms)
-const uint64_t READ_INTERVAL_MICROSECONDS = 100;
+//How often we read the encoder (50 ms)
+const uint64_t READ_INTERVAL_MICROSECONDS = 50000;
 
-//These values change spontaneously
+//Encoder snapshot state
 volatile int64_t latestEncoderCount = 0;
-volatile int64_t latestTimestampMicroseconds = 0;
-volatile bool newReadingAvailable = false;
-volatile int64_t countChange = 0; 
+int64_t latestTimestampMicroseconds = 0;
+int64_t newReadingAvailable = false;
+volatile int64_t timeNow = 0;
+volatile bool isNewReading = false;
 
 //Previous reading (used to compute change)
 int64_t prevEncoderCount = 0;
 int64_t prevTimestampMicroseconds = 0;
 
+//RPM Calculator and Filter Params
 int prevRPM = 0;
-float currentRPMWeight = 0.4;
+float currentRPMWeight = 0.4; //ema filter decimal weigth
 float cleanRPM = 0;
+int64_t countChange = 0; 
+
+//PID params
+double integral, previous, pidOutput = 0; 
+double Kp, Ki, Kd; //for now just following a setup tutorial, we can tune this later
+double setpoint = 50;
+double dt;
 
 //Periodic-timer Callback
 //Function called to get current time and encoder counts for RPM readings.
 static void IRAM_ATTR timerCallback(void* arg) {
-  latestTimestampMicroseconds = esp_timer_get_time();
-  latestEncoderCount = encoder.getCount();
-  newReadingAvailable = true;
+  timeNow = esp_timer_get_time();
+  isNewReading = true;
 }
-
-double dt, last_time;
-double integral, previous, pidOutput = 0; 
-//PID params
-double Kp, Ki, Kd; //for now just following a setup tutorial, we can tune this later
-double setpoint = 50;
-
 
 void setup() {
   //PID set up stuff
@@ -57,22 +59,27 @@ void setup() {
   Ki = 0.1;
   Kd = 0.01;
 
-  last_time = millis();
   integral = 0;
   previous = 0;
   //RPM Calc Setup
 
-
+  //Set encoder channels as input pins
   pinMode(CHANNEL_A, INPUT_PULLUP);
   pinMode(CHANNEL_B, INPUT_PULLUP); //Attach
+
+  //Attach PWM and Specific motor pin as Output channels
+  pinMode(PWM,OUTPUT);
+  pinMode(IN1,OUTPUT);
+
+  //Set up LED control, the way esps can write to the motor.
+  ledcAttach(PWM, 20000, 8); //Attach PWM pin, 20kHz frequency, 8-bit resolution 
+  // 20 kHz, 8-bit resolution
 
   encoder.attachFullQuad(CHANNEL_A, CHANNEL_B);
   encoder.clearCount();
   delay(10);
 
-  prevTimestampMicroseconds = esp_timer_get_time();
-  prevEncoderCount = encoder.getCount();
-
+  //PERIODIC TIMER SETUP
   //Create periodic timer argument that will run on the esp32, using the callback from timerCallback
   const esp_timer_create_args_t timerArgs = {
     .callback = &timerCallback,
@@ -85,28 +92,18 @@ void setup() {
   //Start periodic timer
   esp_timer_start_periodic(periodicTimer, READ_INTERVAL_MICROSECONDS);
 
-  pinMode(PWM,OUTPUT);
-  pinMode(IN1,OUTPUT);
-  //pinMode(IN2,OUTPUT);
- 
-  // setpoint = 50;
-  // for(int i = 0; i < 50; i++)
-  // {
-  //   Serial.print(setpoint);
-  //   Serial.print(",");
-  //   Serial.println(0);
-  // }
-  
-  //Set up LED control, the way esps can write to the motor.
-  ledcAttach(PWM, 20000, 8); //Attach PWM pin, 20kHz frequency, 8-bit resolution 
-   // 20 kHz, 8-bit resolution
-
 }
 
 void loop() {
+  //--- Copy variables from timer callback ---- 
+  latestTimestampMicroseconds = timeNow;
+  newReadingAvailable = isNewReading;
+  //---------------------------------
 
   if (!newReadingAvailable) return;
   
+  latestEncoderCount = encoder.getCount(); // Get encoder count from encoder object
+
   //float setpoint = 50; //this changes from jetson comm
 
   //Calculates the error in the system
@@ -130,60 +127,39 @@ void loop() {
   Serial.print("Setpoint: "); Serial.print(setpoint);
   Serial.print(", Actual: "); Serial.print(actualRpm);
   Serial.print(", Error: "); Serial.print(error);
-  Serial.print(" Encoder count"); Serial.println(countChange);
-
+  Serial.print(" Encoder count"); Serial.println(countChange); 
+  
+  newReadingAvailable = false;
 }
 
 double rpmCalculator() {
 
-  int64_t currentEncoderCount = latestEncoderCount;
-  int64_t currentTimestampMicroseconds = latestTimestampMicroseconds;
-  newReadingAvailable = false;
-
-
   //Compute changes in encoder count and time
-  countChange = currentEncoderCount - prevEncoderCount;
-  int64_t timeChangeMicroseconds = currentTimestampMicroseconds - prevTimestampMicroseconds;
+  countChange = latestEncoderCount - prevEncoderCount;
+  int64_t timeChangeMicroseconds = latestTimestampMicroseconds - prevTimestampMicroseconds;
+
+  //set dt for pid in seconds
+  dt = timeChangeMicroseconds / 1e6;
 
   //Only calculate RPM when there's new data
-  //Use 10 microsecond intervals to reduce overheads on the esp32
   if (timeChangeMicroseconds > 0) { //Zero-division guard
-    
-    prevEncoderCount = currentEncoderCount;
-    prevTimestampMicroseconds = currentTimestampMicroseconds;
+    //Next iteration setup
+    prevEncoderCount = latestEncoderCount;
+    prevTimestampMicroseconds = latestTimestampMicroseconds;
   }
 
-  //Integer RPM calculation:
+  //Integer RPM calculation
   //RPM = (countChange * 60,000,000) / (COUNTS_PER_REVOLUTION * timeChangeMicroseconds)
-  int64_t numerator = countChange * (60LL * 1000000LL);
-  int64_t denominator = (int64_t)COUNTS_PER_REVOLUTION * timeChangeMicroseconds;
-
-  bool isNegative = false;
-  if (numerator < 0) {
-    isNegative = true;
-    numerator = -numerator;
-  }
-
-  //convert to RPM
-  int64_t currentRPM = numerator/ denominator; //returns unfiltered RPM 
+  int64_t currentRPM = (countChange * 60LL * 1000000LL) / ((int64_t)COUNTS_PER_REVOLUTION * timeChangeMicroseconds); //returns unfiltered RPM 
 
   //Clean with low-pass ema filter
-  cleanRPM = emaFilter(currentRPM, prevRPM, currentRPMWeight);
+  cleanRPM = fabs(emaFilter(currentRPM, prevRPM, currentRPMWeight));
   
-  if (isNegative) currentRPM = -currentRPM;
-
   Serial.print("RPM: ");
-  Serial.print(currentRPM);
-  Serial.print('.');
-  Serial.println(llabs(currentRPM % 10));
+  Serial.print(cleanRPM);
 
   //Store for next reading
   prevRPM = cleanRPM;
-
- //Timer keeping track of time elapsed.  
-  double now = millis();
-  dt = (now-last_time)/1000.00;
-  last_time = now;
   
   return cleanRPM;
 }
