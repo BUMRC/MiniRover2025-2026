@@ -1,6 +1,6 @@
 #include <ESP32Encoder.h>
 #include <esp_timer.h>
-#include <esp_attr.h> //for IRAM_ATTR
+#include <esp_attr.h>  //Provides IRAM_ATTR for placing ISR/timer code in IRAM
 
 #define CHANNEL_A 15 //yellow wire
 #define CHANNEL_B 16 //green wire
