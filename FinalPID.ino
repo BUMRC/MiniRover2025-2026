@@ -21,17 +21,17 @@ const uint64_t READ_INTERVAL_MICROSECONDS = 50000;
 
 //Encoder snapshot state
 volatile int64_t latestEncoderCount = 0;
-int64_t latestTimestampMicroseconds = 0;
-int64_t newReadingAvailable = false;
-volatile int64_t timeNow = 0;
-volatile bool isNewReading = false;
+volatile int64_t latestTimestampMicroseconds = 0;
+volatile bool newReadingAvailable = false;
+
+
 
 //Previous reading (used to compute change)
 int64_t prevEncoderCount = 0;
 int64_t prevTimestampMicroseconds = 0;
 
 //RPM Calculator and Filter Params
-int prevRPM = 0;
+float prevRPM = 0.0f;
 float currentRPMWeight = 0.4; //ema filter decimal weigth
 float cleanRPM = 0;
 int64_t countChange = 0; 
@@ -40,13 +40,16 @@ int64_t countChange = 0;
 double integral, previous, pidOutput = 0; 
 double Kp, Ki, Kd; //for now just following a setup tutorial, we can tune this later
 double setpoint = 50;
-double dt;
+const double DT_SECONDS = 0.05;
+
 
 //Periodic-timer Callback
 //Function called to get current time and encoder counts for RPM readings.
 static void IRAM_ATTR timerCallback(void* arg) {
-  timeNow = esp_timer_get_time();
-  isNewReading = true;
+  latestTimestampMicroseconds = esp_timer_get_time();
+  latestEncoderCount = encoder.getCount();  // SNAPSHOT HERE
+  newReadingAvailable = true;
+
 }
 
 void setup() {
@@ -96,20 +99,23 @@ void setup() {
 
 void loop() {
   //--- Copy variables from timer callback ---- 
-  latestTimestampMicroseconds = timeNow;
-  newReadingAvailable = isNewReading;
-  //---------------------------------
-
+  int64_t encoderCountSnapshot;
+  int64_t timestampSnapshot;
+  
   if (!newReadingAvailable) return;
   
-  latestEncoderCount = encoder.getCount(); // Get encoder count from encoder object
+  noInterrupts();
+  encoderCountSnapshot = latestEncoderCount;
+  timestampSnapshot = latestTimestampMicroseconds;
+  interrupts();
+  //---------------------------------
 
   //float setpoint = 50; //this changes from jetson comm
 
   //Calculates the error in the system
-  double actualRpm = rpmCalculator();// from our rpm calc
+  double actualRpm = rpmCalculator(encoderCountSnapshot, timestampSnapshot);// from our rpm calc
   double error = setpoint - actualRpm;
-  pidOutput = pid(error, dt);
+  pidOutput = pid(error, DT_SECONDS);
 
   //Scale / constrain PID output to 0–255 for PWM
   //use `fabs` for absolute value
@@ -132,35 +138,23 @@ void loop() {
   newReadingAvailable = false;
 }
 
-double rpmCalculator() {
+double rpmCalculator(int64_t encoderCount) {
 
-  //Compute changes in encoder count and time
-  countChange = latestEncoderCount - prevEncoderCount;
-  int64_t timeChangeMicroseconds = latestTimestampMicroseconds - prevTimestampMicroseconds;
+  // Compute change in encoder counts
+  countChange = encoderCount - prevEncoderCount;
+  prevEncoderCount = encoderCount;  // store for next iteration
 
-  //set dt for pid in seconds
-  dt = timeChangeMicroseconds / 1e6;
+  // Compute RPM assuming fixed DT
+  float currentRPM = (countChange * 60.0f) / (COUNTS_PER_REVOLUTION * DT_SECONDS);
 
-  //Only calculate RPM when there's new data
-  if (timeChangeMicroseconds > 0) { //Zero-division guard
-    //Next iteration setup
-    prevEncoderCount = latestEncoderCount;
-    prevTimestampMicroseconds = latestTimestampMicroseconds;
-  }
-
-  //Integer RPM calculation
-  //RPM = (countChange * 60,000,000) / (COUNTS_PER_REVOLUTION * timeChangeMicroseconds)
-  int64_t currentRPM = (countChange * 60LL * 1000000LL) / ((int64_t)COUNTS_PER_REVOLUTION * timeChangeMicroseconds); //returns unfiltered RPM 
-
-  //Clean with low-pass ema filter
+  // Apply EMA filter
   cleanRPM = fabs(emaFilter(currentRPM, prevRPM, currentRPMWeight));
-  
-  Serial.print("RPM: ");
-  Serial.print(cleanRPM);
-
-  //Store for next reading
   prevRPM = cleanRPM;
-  
+
+  // Debug print
+  Serial.print("RPM: ");
+  Serial.println(cleanRPM);
+
   return cleanRPM;
 }
 
@@ -193,6 +187,9 @@ double emaFilter(double currentRPM, double prevRPM, float currentRPMWeight){
 
 //function that takes the direction, the pwrm, and the two motor pins and changes the speed of motor accordingly. 
 void setMotor(int dir, int pwmVal){
+  // Constrain PWM to 0-255 just to be safe
+  pwmVal = constrain(pwmVal, 0, 255);
+  
   ledcWrite(PWM, pwmVal);  // PWM pin
   if(dir == 1){
     digitalWrite(IN1, HIGH);
