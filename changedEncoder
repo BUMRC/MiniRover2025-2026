@@ -1,0 +1,54 @@
+#include <ESP32Encoder.h>
+#include <esp_timer.h>
+
+#define CHANNEL_A 15
+#define CHANNEL_B 16
+
+ESP32Encoder encoder;
+
+// Encoder specs
+const float PPR = 187.95;        // pulses per channel per rev (from datasheet)
+const int QUAD_MULT = 4;         // full quadrature
+const float COUNTS_PER_REV = PPR * QUAD_MULT;
+
+int64_t lastCount = 0;
+int64_t lastTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("Encoder rotation + RPM demo");
+
+  pinMode(CHANNEL_A, INPUT_PULLUP);
+  pinMode(CHANNEL_B, INPUT_PULLUP);
+
+  encoder.attachFullQuad(CHANNEL_A, CHANNEL_B);
+  encoder.clearCount();
+
+  lastTime = esp_timer_get_time();
+  lastCount = encoder.getCount();
+}
+
+void loop() {
+  delay(100);  // 100 ms sample time
+
+  int64_t currentTime = esp_timer_get_time();
+  int64_t currentCount = encoder.getCount();
+
+  int64_t deltaCounts = currentCount - lastCount;
+  int64_t deltaTime = currentTime - lastTime;  // microseconds
+
+  // RPM calculation
+  float rpm = (deltaCounts * 60.0f * 1e6) / (COUNTS_PER_REV * deltaTime);
+
+  Serial.print("Count: ");
+  Serial.print(currentCount);
+  Serial.print(" | ΔCount: ");
+  Serial.print(deltaCounts);
+  Serial.print(" | RPM: ");
+  Serial.println(rpm, 3);
+
+  // Update references
+  lastCount = currentCount;
+  lastTime = currentTime;
+}
